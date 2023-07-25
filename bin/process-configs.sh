@@ -18,10 +18,17 @@
 # 3. Display summary table showing key test metrics.
 # -----------------------------------------------------------------------------
 # Start with default build properties
-cp ./build.properties.sample ./build.properties
+cp build.properties.sample build.properties
 
-# Replace the version number in build.properties with $1c
-sed -i "s/commons-pool2\/2.2\/commons-pool2-2.2.jar/commons-pool2\/$1\/commons-pool2-$1.jar/g" ./build.properties 
+# Replace the version number in build.properties with $1
+# On MacOS, sed if borked, so use gsed instead (needs brew install gnu-sed)
+if [[ "$OSTYPE" == "linux-gnu"* ]]; then
+    sed -i "s/commons-pool2\/2.2\/commons-pool2-2.2.jar/commons-pool2\/$1\/commons-pool2-$1.jar/g" build.properties 
+elif [[ "$OSTYPE" == "darwin"* ]]; then
+    gsed -i "s/commons-pool2\/2.2\/commons-pool2-2.2.jar/commons-pool2\/$1\/commons-pool2-$1.jar/g" build.properties
+else
+    echo "Unsupported OS"
+fi
 echo "Processing configs with pool version $1"
 cat build.properties
 
@@ -32,12 +39,14 @@ mvn -DgroupId=org.apache.commons -DartifactId=commons-pool2 -Dversion=$1 depende
 #   1. Copy config to config-pool.xml
 #   2. ant
 #   3. Move log file to ./results
-for f in ./configs/*; do    
+base_path=${HOME}/commons-performance/src/pool/pool-performance
+for f in ${base_path}/configs/*; do    
     cp $f config-pool.xml
     name=$(xmllint --xpath '//configuration/name/text()' config-pool.xml)
     echo "Processing $name"
     ant
-    mv ${HOME}/performance0.log.0 ./results/pool2-version-$1-${name}.log
+    mkdir -p ${base_path}/results
+    mv ${HOME}/performance0.log.0 ${base_path}/results/pool2-version-$1-${name}.log
     echo "Processing completed for $name"
 done
 echo "Processing completed for all configs, pool version $1"
