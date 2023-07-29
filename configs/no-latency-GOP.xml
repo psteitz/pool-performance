@@ -21,7 +21,7 @@
 
 <configuration>
   
-  <name>no_latency-GOP</name>
+  <name>no-latency-GOP</name>
 
   <factory>
     <activate-latency>0</activate-latency>
