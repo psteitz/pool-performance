@@ -13,13 +13,14 @@
 # 4. Copy gzip created in 0. back to HOME_PATH + POOL_PERFORMACE_PATH,
 #    and unzip it to restore /results
 #
-#   Records in results[] inclue
+#   Records in results[] include
 #
 #   pool_version         : the version of the pool (e.g. 2.10.0, 2.12.0-SNAPSHOT)
-#   config_name          : the value of the <name> element in commons-performance xml file used iin the run
-#   latency_mean         : the mean latency across all client threads
-#   latency_stddev       : the standard deviation of the latency across all client threads
-#   on_time_startup_rate : the proportion of clients that started on time
+#   config_name          : the value of the <name> element in commons-performance xml file used in the run
+#   latency_mean         : the mean latency across all client thread executions
+#   latency_stddev       : the standard deviation of latency across all client thread executions
+#   on_time_startup_rate : the proportion of client thread executions that start on time
+#   success_rate         : the proportion of client thread executions that complete successfully
 #   id                   : a unique long integer id for the record
 #   
 
@@ -48,12 +49,26 @@ def remaining_minus_suffix(index, tokens):
     out = out + tokens[len(tokens) - 1][:-4]
     return out
 
+# Find the next line in lines starting at line i that contains key, and return the value
+def findNexValue(lines, i, key):
+    for j in range(i, len(lines)):
+        if key in lines[j]:
+            return float(lines[j].split(":")[1])
+    return -1
+
+# count of files processed
 count = 0
+
+# Process the files in RESULTS_PATH, adding the data from each report to results[]
 def process_files():
     global count
     for file in os.listdir(RESULTS_PATH):
+        # Read each file, creating one result record for each file
         print("Processing file " + file)
         record = {}
+        # Set ID to the next sequential integer
+        record["id"] = count;
+
         # use the name of the file to set pool_version and config_name
         name_tokens = file.split("-")
         # name is like pool2-version-2.10.0-sample-GKOP.log
@@ -63,50 +78,35 @@ def process_files():
             record["config_name"] = remaining_minus_suffix(4, name_tokens)
         else:
             record["pool_version"] = name_tokens[2]
-            record["config_name"] = remaining_minus_suffix(3, name_tokens)
+            record["config_name"] = remaining_minus_suffix(3, name_tokens)   
 
-        # Set ID to the next sequential integer
-        record["id"] = count;
-
-        # open the file
+        # Read through the file, pulling summary statistics from the text.
         with open(RESULTS_PATH + "/" + file) as f:
-            # read the file into a lines array
             lines = f.readlines()
-            # loop over lines, looking for overall LATENCY and ON TIME STARTUP RATE blocks
             for i in range(len(lines)):
                 if "Overall summary statistics (all threads combined) LATENCY" in lines[i]:
-                    # look for the next line that contains "mean:"
-                    for j in range(i, len(lines)):
-                        if "mean:" in lines[j]:
-                            # set latency_mean to the value of mean:
-                            record["latency_mean"] = float(lines[j].split(":")[1])
-                            break
-                    # look for the next line that contains "std dev:"
-                    for j in range(i, len(lines)):
-                        if "std dev:" in lines[j]:
-                            # set latency_stddev to the value of std dev:
-                            record["latency_stddev"] = float(lines[j].split(":")[1])
-                            break
-                # if the line contains "ON TIME STARTUP RATE", look for the next line that contains "mean:"
+                    record["latency_mean"] = findNexValue(lines, i, "mean:")
+                    record["latency_stddev"] = findNexValue(lines, i, "std dev:")
                 if "Overall summary statistics (all threads combined) ON TIME STARTUP RATE" in lines[i]:
-                    for j in range(i, len(lines)):
-                        if "mean:" in lines[j]:
-                            # set on_time_startup_rate to the value of mean:
-                            record["on_time_startup_rate"] = float(lines[j].split(":")[1])
-                            break
+                    record["on_time_startup_rate"] = findNexValue(lines, i, "mean:")
+                if "Overall summary statistics (all threads combined) SUCCESSFUL COMPLETION RATE" in lines[i]:
+                    record["success_rate"] = findNexValue(lines, i, "mean:")
         print ("Finished processing file " + file + " with record " + str(record))
-        # add the record to the results array
         results.append(record)
         count += 1
 
 # Process the files in /results
 process_files()
-# For each file named *.tgz in HOME_PATH + "/commons-performance/src/pool/pool-performance/
-#  a. Unzip the .tgz file to overwrite reports in /results
-#  b. Process the files in /results
+# For each file named *.tgz in HOME_PATH + POOL_PERFORMACE_PATH
+#  1. Unzip the .tgz file to overwrite reports in /results
+#  2. Process the files in /results
 #
-# loop over files in HOME_PATH + "/commons-performance/src/pool/pool-performance/
+# Chaange working directory so tar will work correctly
 os.chdir(HOME_PATH + POOL_PERFORMACE_PATH)
+
+# loop over files in HOME_PATH + POOL_PERFORMACE_PATH
+# unzip the file in place, which will overwrite files in /results
+# Run process_files() to process the files now in /results
 for file in os.listdir(HOME_PATH + POOL_PERFORMACE_PATH):
     # if the file name ends with .tgz
     if file.endswith(".tgz"):
@@ -134,6 +134,7 @@ out = []
 #   latency_mean : the mean of the means of latency_mean across all reports
 #   latency_stddev : the mean of the standard deviations of latency_mean across all reports
 #   on_time_startup_rate : the mean of the means of on_time_startup_rate across all reports
+#  success_rate : the mean of the means of success_rate across all reports
 #   num_reports : the number of reports used to compute the means above
 
 # loop over versions
@@ -163,12 +164,14 @@ for version in versions:
         latency_means = []
         latency_stddevs = []
         on_time_startup_rates = []
+        success_rates = []
         for rec in results:
             if rec["pool_version"] == version and rec["config_name"] == config:
                 if "latency_mean" in rec and "latency_stddev" in rec and "on_time_startup_rate" in rec:
                     latency_means.append(rec["latency_mean"])
                     latency_stddevs.append(rec["latency_stddev"])
                     on_time_startup_rates.append(rec["on_time_startup_rate"])
+                    success_rates.append(rec["success_rate"])
                     num_reports += 1
         # compute the mean of the means and the mean of the standard deviations
         # of latency_mean and the mean of on_time_startup_rate
@@ -176,6 +179,7 @@ for version in versions:
             record["latency_mean"] = sum(latency_means) / len(latency_means)
             record["latency_stddev"] = sum(latency_stddevs) / len(latency_stddevs)
             record["on_time_startup_rate"] = sum(on_time_startup_rates) / len(on_time_startup_rates)
+            record["success_rate"] = sum(success_rates) / len(success_rates)
             record["num_reports"] = num_reports
             # add the record to out
             out.append(record)
@@ -186,11 +190,12 @@ for version in versions:
 
 # write out the results
 with open(OUTPUT_PATH, "w") as f2:
-    f2.write("pool_version,config_name,latency_mean,latency_stddev,on_time_startup_rate,num_reports\n")
+    f2.write("pool_version,config_name,latency_mean,latency_stddev,on_time_startup_rate,success_rate,num_reports\n")
     for record in out:
         out_str = record["pool_version"] + "," + record["config_name"] + \
         "," + str(record["latency_mean"]) + "," + str(record["latency_stddev"]) + \
         "," + str(record["on_time_startup_rate"]) + \
+        "," + str(record["success_rate"]) + \
         "," + str(record["num_reports"]) + "\n"
         f2.write(out_str)
 
